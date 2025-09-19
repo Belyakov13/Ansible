@@ -1,0 +1,110 @@
+---
+- name: Configure CIFS mounts and PAM
+  hosts: all
+  become: yes
+
+  vars_prompt:
+    - name: cifs_username
+      prompt: "Enter CIFS username"
+      private: no
+    - name: cifs_password
+      prompt: "Enter CIFS password"
+      private: yes
+
+  tasks:
+    - name: Install required packages
+      apt:
+        name:
+          - cifs-utils
+          - libpam-mount
+        state: present
+        update_cache: yes
+
+    - name: Configure pam_mount.conf.xml
+      copy:
+        content: |
+          <?xml version="1.0" encoding="utf-8" ?>
+          <!DOCTYPE pam_mount SYSTEM "pam_mount.conf.xml.dtd">
+          <!--
+              See pam_mount.conf(5) for a description.
+          -->
+          <pam_mount>
+              <!-- debug should come before everything else,
+                   since this file is still processed in a single pass
+                   from top-to-bottom -->
+              <debug enable="1" />
+              <!-- Volume definitions -->
+              <cifsmount>mount.cifs //%(SERVER)/%(VOLUME) %(MNTPT) -o %(OPTIONS) </cifsmount>
+              <!-- pam_mount parameters: General tunables -->
+              <!-- Описание тома, который должен монтироваться -->
+              <volume
+                 user="*"
+                 fstype="cifs"
+                 server="ip_addr"
+                 path="operators"
+                 mountpoint="/home/%(USER)/operators"
+                 options="credentials=/etc/cifs-credentials,uid=%(USER),gid=%(USER),dir_mode=0700,file_mode=0600,nobrl,nouser_xattr,vers=1.0"
+              />
+
+              <volume
+                 user="*"
+                 fstype="cifs"
+                 server="ip_addr"
+                 path="naladka"
+                 mountpoint="/home/%(USER)/naladka"
+                 options="credentials=/etc/cifs-credentials,uid=%(USER),gid=%(USER),dir_mode=0700,file_mode=0600,nobrl,nouser_xattr,vers=1.0"
+              />
+
+              <volume
+                 user="*"
+                 fstype="cifs"
+                 server="ip_addr"
+                 path="public"
+                 mountpoint="/home/%(USER)/public"
+                 options="credentials=/etc/cifs-credentials,uid=%(USER),gid=%(USER),dir_mode=0700,file_mode=0600,nobrl,nouser_xattr,vers=1.0"
+              />
+
+              <!--
+              <luserconf name=".pam_mount.conf.xml" />
+              -->
+
+              <!-- Note that commenting out mntoptions will give you the defaults.
+                   You will need to explicitly initialize it with the empty string
+                   to reset the defaults to nothing. -->
+              <mntoptions allow="nosuid,nodev,loop,encryption,fsck,nonempty,allow_root,allow_other" />
+              <!--
+              <mntoptions deny="suid,dev" />
+              <mntoptions allow="*" />
+              <mntoptions deny="*" />
+              -->
+              <mntoptions require="nosuid,nodev" />
+
+              <logout wait="50000" hup="1" term="1" kill="1" />
+              <!-- <logout wait="0" hup="no" term="no" kill="no" /> -->
+              <!-- pam_mount parameters: Volume-related -->
+              <mkmountpoint enable="1" remove="true" />
+          </pam_mount>
+        dest: /etc/security/pam_mount.conf.xml
+        mode: '0644'
+
+    - name: Create cifs-credentials file
+      copy:
+        content: |
+          username={{ cifs_username }}
+          password={{ cifs_password }}
+        dest: /etc/cifs-credentials
+        mode: '0600'
+
+    - name: Configure PAM to use pam_mount
+      lineinfile:
+        path: /etc/pam.d/common-auth
+        line: "auth    optional                        pam_mount.so"
+        insertbefore: '^auth.*pam_unix.so'
+        state: present
+
+    - name: Configure PAM session for pam_mount
+      lineinfile:
+        path: /etc/pam.d/common-session
+        line: "session optional                        pam_mount.so"
+        insertbefore: '^session.*pam_unix.so'
+        state: present
