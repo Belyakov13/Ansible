@@ -1,0 +1,62 @@
+---
+- name: Установка принтера Kyocera ECOSYS M2040dn KPDL на Astra Linux
+  hosts: operators
+  become: true
+  vars:
+    printer_ip: "192.168.101.16"
+    printer_name: "kyocera2040"
+    ppd_file: "/usr/share/ppd/kyocera/Kyocera_ECOSYS_M2040dn.ppd"
+
+  tasks:
+    - name: Установка необходимых зависимостей
+      apt:
+        name:
+          - cups
+          - cups-client
+          - cups-bsd
+          - libc6-i386
+          - lib32stdc++6
+        state: present
+        update_cache: yes
+
+    - name: Копирование пакета драйвера Kyocera на сервер
+      copy:
+        src: /etc/ansible/playbooks/files/kyodialog_9.4-0_amd64.deb
+        dest: /tmp/kyodialog_9.4-0_amd64.deb
+        mode: '0644'
+
+    - name: Установка драйвера Kyocera
+      apt:
+        deb: /tmp/kyodialog_9.4-0_amd64.deb
+        state: present
+      ignore_errors: yes
+      register: deb_install
+
+    - name: Исправление зависимостей (если нужно)
+      apt:
+        name: kyodialog
+        state: present
+        update_cache: yes
+      when: deb_install is failed
+
+    - name: Проверка наличия PPD-файла Kyocera
+      stat:
+        path: "{{ ppd_file }}"
+      register: ppd_check
+
+    - name: Добавление принтера
+      command: >
+        lpadmin -p {{ printer_name }}
+        -E
+        -v lpd://{{ printer_ip }}/{{ printer_name }}
+        -P {{ ppd_file }}
+        -o printer-is-shared=false
+      when: ppd_check.stat.exists
+
+    - name: Установка принтера по умолчанию
+      command: lpoptions -d {{ printer_name }}
+
+    - name: Перезапуск службы CUPS
+      service:
+        name: cups
+        state: restarted

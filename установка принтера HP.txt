@@ -1,0 +1,47 @@
+---
+- name: Установка принтера HP LaserJet MFP M436
+  hosts: all
+  become: yes
+  tasks:
+
+    - name: Копирование архива с драйверами на сервер
+      copy:
+        src: /etc/ansible/playbooks/files/uld-hp.tar.gz
+        dest: /home/operatoresk/uld-hp.tar.gz
+        mode: '0644'
+
+    - name: Распаковка архива с драйверами
+      unarchive:
+        src: /home/operatoresk/uld-hp.tar.gz
+        dest: /home/operatoresk/
+        remote_src: yes
+        mode: '0755'
+
+    - name: Установка прав на исполняемые файлы
+      file:
+        path: /home/operatoresk/uld/
+        state: directory
+        recurse: yes
+        mode: '0755'
+
+    - name: Проверка наличия и установки зависимостей
+      apt:
+        name:
+          - cups
+          - cups-client
+          - cups-bsd
+          - lsb
+          - lsb-core
+        state: present
+        update_cache: yes
+
+    - name: Автоматический запуск установки драйвера (принимаем лицензию и отвечаем "y")
+      shell: echo -e "y\ny\n" | sh /home/operatoresk/uld/install.sh
+      args:
+        chdir: /home/operatoresk/uld/
+
+    - name: Добавление принтера HP LaserJet MFP M436 с PPD-файлом
+      command: >
+        lpadmin -p hp_m436 -E 
+        -v lpd://192.168.101.18:515/hp 
+        -P /usr/share/ppd/uld-hewlett-packard/HP_LaserJet_MFP_M436.ppd

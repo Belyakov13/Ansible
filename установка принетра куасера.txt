@@ -1,0 +1,52 @@
+---
+- name: Установка принтера Kyocera ECOSYS M3645dn KPDL на Astra Linux
+  hosts: printers
+  become: true
+  tasks:
+
+    - name: Копирование пакета драйвера Kyocera на сервер
+      copy:
+        src: /etc/ansible/playbooks/files/kyodialog_9.4-0_amd64.deb
+        dest: /tmp/kyodialog_9.4-0_amd64.deb
+        mode: '0644'
+
+    - name: Установка драйвера Kyocera из .deb пакета
+      apt:
+        deb: /tmp/kyodialog_9.4-0_amd64.deb
+        state: present
+
+    - name: Установка CUPS и зависимостей
+      apt:
+        name:
+          - cups
+          - cups-client
+          - cups-bsd
+        state: present
+        update_cache: yes
+
+    - name: Включение и запуск службы CUPS
+      service:
+        name: cups
+        state: started
+        enabled: yes
+
+    - name: Проверка наличия PPD-файла Kyocera
+      stat:
+        path: /usr/share/ppd/kyocera/Kyocera_ECOSYS_M3645dn.ppd
+      register: ppd_file
+
+    - name: Добавление принтера kyocera3645 с драйвером KPDL
+      command: >
+        lpadmin -p kyocera3645 
+        -E 
+        -v lpd://192.168.101.17:515/kyocera3645 
+        -P /usr/share/ppd/kyocera/Kyocera_ECOSYS_M3645dn.ppd
+      when: ppd_file.stat.exists
+
+    - name: Установка принтера kyocera3645 по умолчанию
+      command: lpoptions -d kyocera3645
+
+    - name: Перезапуск службы CUPS
+      service:
+        name: cups
+        state: restarted
