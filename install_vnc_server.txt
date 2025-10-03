@@ -1,0 +1,49 @@
+---
+- name: Установка и настройка x11vnc на Astra Linux 1.7
+  hosts: all
+  become: yes
+  vars:
+    x11vnc_password: "qwerty123"
+
+  tasks:
+    - name: Установить x11vnc
+      apt:
+        name: x11vnc
+        state: present
+        update_cache: yes
+
+    - name: Создать systemd unit файл для x11vnc
+      copy:
+        dest: /etc/systemd/system/x11vnc.service
+        content: |
+          [Unit]
+          Description=VNC Server for X11
+          Requires=display-manager.service
+          After=network-online.target
+          Wants=network-online.target
+
+          [Service]
+          ExecStart=/usr/bin/x11vnc -ncache 10 -auth guess -display :0 -rfbauth /etc/x11vnc.pwd -shared -forever -o /var/log/x11vnc.log
+          ExecStop=/usr/bin/x11vnc -R stop
+          Restart=on-failure
+          RestartSec=2
+
+          [Install]
+          WantedBy=multi-user.target
+      notify:
+        - Reload systemd
+
+    - name: Создать пароль для x11vnc
+      command: x11vnc -storepasswd {{ x11vnc_password }} /etc/x11vnc.pwd
+      args:
+        creates: /etc/x11vnc.pwd
+
+    - name: Запустить сервис x11vnc
+      systemd:
+        name: x11vnc
+        state: started
+        enabled: yes
+
+  handlers:
+    - name: Reload systemd
+      command: systemctl daemon-reload
